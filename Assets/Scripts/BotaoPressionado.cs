@@ -87,6 +87,7 @@ public class BotaoPressionado : MonoBehaviour
             outlinePorta.OutlineWidth = 5f;
 
         audioSource.PlayOneShot(clipVitoria);
+        porta.AtivarPuzzle();
     }
 
     private AudioClip GerarClipVitoria()
