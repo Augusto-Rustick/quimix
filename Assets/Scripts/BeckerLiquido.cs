@@ -13,10 +13,6 @@ public class BeckerLiquido : MonoBehaviour
     [Tooltip("Escala Y do mesh quando o béquer está VAZIO")]
     [SerializeField] private float escalaYVazia = 0f;
 
-    [Header("Porta (destranca ao receber primeira unidade)")]
-    [Tooltip("Arraste aqui o script EventosPorta da porta")]
-    [SerializeField] private EventosPorta porta;
-
     [Header("Cor do Líquido (RN02)")]
     [Tooltip("Nome da propriedade de cor base no shader. '_BaseColor' (URP) ou '_Color' (Built-in).")]
     [SerializeField] private string propriedadeCor = "_BaseColor";
@@ -25,13 +21,16 @@ public class BeckerLiquido : MonoBehaviour
     private int unidadesBecker = 0;
 
     public bool PodeReceberMais => unidadesBecker < 3;
+    public int TotalUnidades => unidadesBecker;
+
+    // Rastreia quantas unidades cada tubo contribuiu (tuboInstanceID → unidades)
+    private Dictionary<int, int> unidadesPorTubo = new Dictionary<int, int>();
 
     private Renderer rendererLiquidoBecker;
     private Material materialInstanciaBecker;
 
     private List<Color> coresBase    = new List<Color>();
     private List<Color> coresEmissao = new List<Color>();
-    private HashSet<int> tubosJaRegistrados = new HashSet<int>();
 
     void Start()
     {
@@ -55,32 +54,33 @@ public class BeckerLiquido : MonoBehaviour
     {
         if (unidadesBecker >= 3) return false;
 
-        RegistrarCorTubo(corBase, corEmissao, tuboInstanceID);
+        // Rastreia por tubo (permite múltiplas unidades do mesmo tubo)
+        if (!unidadesPorTubo.ContainsKey(tuboInstanceID))
+        {
+            unidadesPorTubo[tuboInstanceID] = 0;
+            // Registra a cor na primeira unidade deste tubo
+            coresBase.Add(corBase);
+            coresEmissao.Add(corEmissao);
+            AtualizarCorBecker();
+        }
+        unidadesPorTubo[tuboInstanceID]++;
+
         unidadesBecker++;
         AtualizarMeshBecker();
 
         if (unidadesBecker >= 3)
-            Debug.Log("[BeckerLiquido] Béquer cheio!");
+            Debug.Log($"[{name}] Béquer cheio!");
 
-        if (unidadesBecker == 1 && porta != null)
-            porta.Destrancar();
-
+        Debug.Log($"[{name}] +1 unidade do tubo {tuboInstanceID}. Total: {unidadesBecker}/3");
         return true;
     }
 
-    void RegistrarCorTubo(Color corBase, Color corEmissao, int tuboInstanceID)
+    /// <summary>
+    /// Retorna quantas unidades o tubo com o instanceID dado contribuiu para este béquer.
+    /// </summary>
+    public int GetUnidadesDeTubo(int tuboInstanceID)
     {
-        if (tuboInstanceID != 0 && tubosJaRegistrados.Contains(tuboInstanceID))
-            return;
-
-        if (tuboInstanceID != 0)
-            tubosJaRegistrados.Add(tuboInstanceID);
-
-        coresBase.Add(corBase);
-        coresEmissao.Add(corEmissao);
-        AtualizarCorBecker();
-
-        Debug.Log($"[BeckerLiquido] Cor registrada — Base: {corBase}  Emissão: {corEmissao}. Tubos misturados: {coresBase.Count}");
+        return unidadesPorTubo.TryGetValue(tuboInstanceID, out int u) ? u : 0;
     }
 
     void AtualizarCorBecker()
@@ -97,8 +97,6 @@ public class BeckerLiquido : MonoBehaviour
 
         if (materialInstanciaBecker.HasProperty("_EmissionColor"))
             materialInstanciaBecker.SetColor("_EmissionColor", emissaoMix);
-
-        Debug.Log($"[BeckerLiquido] Base misturada: {baseMix} | Emissão misturada: {emissaoMix}");
     }
 
     static Color MediaCores(List<Color> lista)
@@ -127,9 +125,9 @@ public class BeckerLiquido : MonoBehaviour
     public void Resetar()
     {
         unidadesBecker = 0;
+        unidadesPorTubo.Clear();
         coresBase.Clear();
         coresEmissao.Clear();
-        tubosJaRegistrados.Clear();
         AtualizarMeshBecker();
     }
 
@@ -138,7 +136,7 @@ public class BeckerLiquido : MonoBehaviour
     {
         UnityEditor.Handles.Label(
             transform.position + Vector3.up * 0.3f,
-            $"Béquer: {unidadesBecker}/3 unidades | Tubos misturados: {coresBase?.Count ?? 0}"
+            $"Béquer: {unidadesBecker}/3 unidades"
         );
     }
 #endif

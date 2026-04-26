@@ -19,7 +19,7 @@ public class DerramarLiquido : MonoBehaviour
     [SerializeField] private float velocidadeDerramar = 0.5f;
 
     [Header("Béquer Alvo")]
-    [Tooltip("Referência ao script do béquer que receberá o líquido")]
+    [Tooltip("Deixe vazio — detectado automaticamente pela ZonaDerramarBecker em que o tubo estiver")]
     [SerializeField] private BeckerLiquido beckerAlvo;
 
     [Header("Áudio")]
@@ -194,9 +194,13 @@ public class DerramarLiquido : MonoBehaviour
     {
         if (other.CompareTag("ZonaDerramar"))
         {
+            var zona = other.GetComponent<ZonaDerramarBecker>();
+            if (zona != null && zona.becker != null)
+                beckerAlvo = zona.becker;
+
             if (outline != null) outline.OutlineWidth = 5f;
             inZonaDerramar = true;
-            Debug.Log($"[{gameObject.name}] Entrou na ZonaDerramar.");
+            Debug.Log($"[{gameObject.name}] Entrou na ZonaDerramar. Béquer alvo: {beckerAlvo?.name}");
         }
     }
 
@@ -206,6 +210,7 @@ public class DerramarLiquido : MonoBehaviour
         {
             if (outline != null) outline.OutlineWidth = 0f;
             inZonaDerramar = false;
+            beckerAlvo = null;
             Debug.Log($"[{gameObject.name}] Saiu da ZonaDerramar.");
         }
     }
