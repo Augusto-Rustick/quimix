@@ -20,7 +20,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Liquid
+  m_Name: cor_verde
   m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -134,9 +134,9 @@ Material:
     - _WorkflowMode: 1
     - _ZWrite: 0
     m_Colors:
-    - _BaseColor: {r: 0, g: 0.014446034, b: 0.509434, a: 1}
-    - _Color: {r: 0, g: 0.014446034, b: 0.509434, a: 1}
-    - _EmissionColor: {r: 0.004254395, g: 0, b: 0.22352941, a: 1}
+    - _BaseColor: {r: 0.015686272, g: 0.69803923, b: 0.06632673, a: 1}
+    - _Color: {r: 0.015686272, g: 0.69803923, b: 0.06632671, a: 1}
+    - _EmissionColor: {r: 0, g: 0.22352941, b: 0.026381701, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
