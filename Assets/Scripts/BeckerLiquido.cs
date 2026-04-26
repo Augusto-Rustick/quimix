@@ -28,6 +28,10 @@ public class BeckerLiquido : MonoBehaviour
     [Tooltip("Proporção inicial de cada tubo (0 a 1). Ex: 0.5 = tubo meio cheio)")]
     [SerializeField] private float[] proporcaoInicialTubos = new float[] { 0.5f, 0.5f, 0.5f };
 
+    [Header("Porta (destranca ao encher)")]
+    [Tooltip("Arraste aqui o script EventosPorta da porta")]
+    [SerializeField] private EventosPorta porta;
+
     [Header("Cor do Líquido (RN02)")]
     [Tooltip("Nome da propriedade de cor base no shader. '_BaseColor' (URP) ou '_Color' (Built-in).")]
     [SerializeField] private string propriedadeCor = "_BaseColor";
@@ -105,6 +109,9 @@ public class BeckerLiquido : MonoBehaviour
 
         if (proporcaoBecker >= 1f)
             Debug.Log("[BeckerLiquido] Béquer cheio!");
+
+        if (proporcaoBecker > 0f && porta != null)
+            porta.Destrancar();
     }
 
     /// <summary>
