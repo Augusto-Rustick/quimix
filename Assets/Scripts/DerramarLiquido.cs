@@ -1,9 +1,5 @@
 using UnityEngine;
 
-/// <summary>
-/// Attach este script em cada tubo de ensaio.
-/// Requer: AudioSource no mesmo GameObject, e referência ao BeckerLiquido da cena.
-/// </summary>
 public class DerramarLiquido : MonoBehaviour
 {
     [Header("Configuração de Derramamento")]
@@ -13,14 +9,14 @@ public class DerramarLiquido : MonoBehaviour
     [Tooltip("Objeto filho que representa o mesh do líquido dentro do tubo")]
     [SerializeField] private Transform meshLiquidoTubo;
 
-    [Tooltip("Escala Y máxima do mesh (= tubo cheio). Ajuste conforme seu modelo.")]
+    [Tooltip("Escala Y do mesh quando o tubo está CHEIO (3 unidades).")]
     [SerializeField] private float escalaYMaxima = 1f;
 
-    [Tooltip("Escala Y mínima do mesh (= tubo vazio).")]
+    [Tooltip("Escala Y do mesh quando o tubo está VAZIO.")]
     [SerializeField] private float escalaYMinima = 0f;
 
-    [Tooltip("Velocidade de esvaziamento do tubo ao derramar (unidades de escala Y por segundo)")]
-    [SerializeField] private float velocidadeDerramar = 0.3f;
+    [Tooltip("Velocidade de esvaziamento em unidades por segundo (cada tubo tem 3 unidades). Ex: 0.5 = 2s por unidade.")]
+    [SerializeField] private float velocidadeDerramar = 0.5f;
 
     [Header("Béquer Alvo")]
     [Tooltip("Referência ao script do béquer que receberá o líquido")]
@@ -35,17 +31,17 @@ public class DerramarLiquido : MonoBehaviour
     [SerializeField] private string propriedadeCor = "_BaseColor";
 
     // --- estado interno ---
+    private int unidadesRestantes = 3;
+    private float acumulador = 0f;    // acumula fração da próxima unidade (0–1)
+    private float delayRestante = 0f; // countdown antes do primeiro drip
+
     private bool inZonaDerramar = false;
     private bool estahDerramando = false;
     private AudioSource audioSource;
     private Outline outline;
     private Renderer rendererLiquidoTubo;
-    private Material materialInstancia; // instância cacheada, evita criar nova a cada frame
+    private Material materialInstancia;
 
-    /// <summary>
-    /// Cor atual do líquido deste tubo, lida do material instanciado do meshLiquidoTubo.
-    /// Lê _BaseColor (cor base) com fallback para .color.
-    /// </summary>
     public Color CorLiquido
     {
         get
@@ -57,10 +53,6 @@ public class DerramarLiquido : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Cor de emissão do líquido deste tubo (propriedade _EmissionColor do URP/Lit).
-    /// Retorna Color.black se o material não tiver emissão.
-    /// </summary>
     public Color EmissaoLiquido
     {
         get
@@ -72,25 +64,9 @@ public class DerramarLiquido : MonoBehaviour
         }
     }
 
-    // Proporção atual de líquido no tubo (0 = vazio, 1 = cheio)
-    public float ProporcaoAtual => meshLiquidoTubo != null
-        ? Mathf.InverseLerp(escalaYMinima, escalaYMaxima, meshLiquidoTubo.localScale.y)
-        : 0f;
-
-    public bool EstaVazio => ProporcaoAtual <= 0.001f;
-
-    /// <summary>
-    /// Chamado pelo BeckerLiquido no Start para definir o nível inicial do tubo.
-    /// proporcao: valor entre 0 (vazio) e 1 (cheio).
-    /// </summary>
-    public void DefinirProporcaoInicial(float proporcao)
-    {
-        if (meshLiquidoTubo == null) return;
-        proporcao = Mathf.Clamp01(proporcao);
-        Vector3 escala = meshLiquidoTubo.localScale;
-        escala.y = Mathf.Lerp(escalaYMinima, escalaYMaxima, proporcao);
-        meshLiquidoTubo.localScale = escala;
-    }
+    public int UnidadesRestantes => unidadesRestantes;
+    public float ProporcaoAtual => unidadesRestantes / 3f;
+    public bool EstaVazio => unidadesRestantes <= 0;
 
     void Awake()
     {
@@ -101,7 +77,6 @@ public class DerramarLiquido : MonoBehaviour
         audioSource.loop = true;
         audioSource.playOnAwake = false;
 
-        // Se nenhum clip foi atribuído, gera um beep de placeholder em runtime
         if (clipDerramar == null)
             clipDerramar = GerarClipPlaceholder();
 
@@ -109,21 +84,20 @@ public class DerramarLiquido : MonoBehaviour
 
         outline = GetComponent<Outline>();
 
-        // Busca o Renderer automaticamente no mesmo objeto do mesh do líquido
-        // e cacheia a instância do material (evita criar nova instância a cada acesso)
         if (meshLiquidoTubo != null)
         {
             rendererLiquidoTubo = meshLiquidoTubo.GetComponent<Renderer>();
             if (rendererLiquidoTubo != null)
-                materialInstancia = rendererLiquidoTubo.material; // .material já cria a instância
+                materialInstancia = rendererLiquidoTubo.material;
             else
                 Debug.LogWarning($"[{gameObject.name}] Nenhum Renderer encontrado no meshLiquidoTubo. A cor não será lida.");
         }
+
+        AtualizarMeshTubo();
     }
 
     void Update()
     {
-        // Só processa se estiver na zona de derramar
         if (!inZonaDerramar)
         {
             if (estahDerramando)
@@ -132,7 +106,7 @@ public class DerramarLiquido : MonoBehaviour
         }
 
         float angulo = Vector3.Angle(transform.up, Vector3.up);
-        bool deveriaEstarDerramando = angulo > anguloMin && !EstaVazio;
+        bool deveriaEstarDerramando = angulo > anguloMin && !EstaVazio && beckerAlvo != null && beckerAlvo.PodeReceberMais;
 
         if (deveriaEstarDerramando && !estahDerramando)
             IniciarDerramar();
@@ -146,44 +120,73 @@ public class DerramarLiquido : MonoBehaviour
     void IniciarDerramar()
     {
         estahDerramando = true;
+        delayRestante = 1f;
         audioSource.Play();
-        beckerAlvo?.RegistrarCorTubo(CorLiquido, EmissaoLiquido, gameObject.GetInstanceID());
-        Debug.Log($"[{gameObject.name}] Começou a derramar. Cor: {CorLiquido}");
+        Debug.Log($"[{gameObject.name}] Começou a derramar. Unidades restantes: {unidadesRestantes}");
     }
 
     void PararDerramar()
     {
         estahDerramando = false;
+        acumulador = 0f;
+        delayRestante = 0f;
         audioSource.Stop();
-        Debug.Log($"[{gameObject.name}] Parou de derramar.");
+        Debug.Log($"[{gameObject.name}] Parou de derramar. Unidades restantes: {unidadesRestantes}");
     }
 
     void ProcessarDerramamento()
     {
-        if (meshLiquidoTubo == null || beckerAlvo == null) return;
+        if (beckerAlvo == null) return;
 
-        // Quanto vai diminuir no tubo neste frame
-        float deltaDiminuir = velocidadeDerramar * Time.deltaTime;
+        // Béquer cheio: para imediatamente sem transferir
+        if (!beckerAlvo.PodeReceberMais)
+        {
+            PararDerramar();
+            return;
+        }
 
-        // Limita para não passar do escalaYMinima
-        Vector3 escala = meshLiquidoTubo.localScale;
-        float novaEscalaY = Mathf.Max(escalaYMinima, escala.y - deltaDiminuir);
-        float diminuiuReal = escala.y - novaEscalaY; // o quanto realmente diminuiu
+        // Delay de 1s antes do primeiro drip
+        if (delayRestante > 0f)
+        {
+            delayRestante -= Time.deltaTime;
+            return;
+        }
 
-        // Aplica no tubo
-        escala.y = novaEscalaY;
-        meshLiquidoTubo.localScale = escala;
+        acumulador += velocidadeDerramar * Time.deltaTime;
 
-        // Converte diminuição de escala em proporção e manda pro béquer
-        float proporcaoTransferida = diminuiuReal / (escalaYMaxima - escalaYMinima);
-        beckerAlvo.ReceberLiquido(proporcaoTransferida);
+        // Loop: drena todas as unidades devidas no frame (evita acúmulo em frames lentos)
+        while (acumulador >= 1f && !EstaVazio && beckerAlvo.PodeReceberMais)
+        {
+            acumulador -= 1f;
+            bool aceitou = beckerAlvo.ReceberUnidade(CorLiquido, EmissaoLiquido, gameObject.GetInstanceID());
+            if (aceitou)
+            {
+                unidadesRestantes = Mathf.Max(0, unidadesRestantes - 1);
+                AtualizarMeshTubo();
+                Debug.Log($"[{gameObject.name}] Transferiu 1 unidade. Restam: {unidadesRestantes}");
+            }
+            else break;
+        }
 
-        // Se esvaziou, para de derramar
         if (EstaVazio)
         {
             Debug.Log($"[{gameObject.name}] Tubo vazio!");
-            meshLiquidoTubo.gameObject.SetActive(false);
             PararDerramar();
+        }
+    }
+
+    void AtualizarMeshTubo()
+    {
+        if (meshLiquidoTubo == null) return;
+
+        bool vazio = unidadesRestantes <= 0;
+        meshLiquidoTubo.gameObject.SetActive(!vazio);
+
+        if (!vazio)
+        {
+            Vector3 escala = meshLiquidoTubo.localScale;
+            escala.y = Mathf.Lerp(escalaYMinima, escalaYMaxima, unidadesRestantes / 3f);
+            meshLiquidoTubo.localScale = escala;
         }
     }
 
@@ -207,10 +210,6 @@ public class DerramarLiquido : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Gera um AudioClip simples de "borbulha/água" como placeholder em runtime.
-    /// Substitua pelo seu AudioClip real no Inspector.
-    /// </summary>
     private AudioClip GerarClipPlaceholder()
     {
         int sampleRate = 44100;
@@ -221,9 +220,8 @@ public class DerramarLiquido : MonoBehaviour
         float[] data = new float[samples];
         for (int i = 0; i < samples; i++)
         {
-            // Ruído branco suavizado simula som de líquido
             float t = (float)i / sampleRate;
-            float envelope = Mathf.Sin(Mathf.PI * t / duracao); // fade in/out
+            float envelope = Mathf.Sin(Mathf.PI * t / duracao);
             data[i] = Random.Range(-0.15f, 0.15f) * envelope;
         }
 
